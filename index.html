@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Sunglasses AR — Fixed Bundle (Debug)</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  .app{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr auto}
+  header,footer{padding:8px 12px;background:rgba(0,0,0,.5);backdrop-filter:blur(6px)}
+  header{display:flex;gap:8px;align-items:center}
+  #stage{position:relative;overflow:hidden}
+  #video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  #canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  .controls{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap}
+  button{appearance:none;padding:10px 14px;border-radius:999px;border:0;font-weight:600;background:#fff;color:#111;box-shadow:0 4px 16px rgba(0,0,0,.25);cursor:pointer}
+  .badge{font-size:12px;opacity:.85}
+  .hidden{display:none!important}
+  .hud{position:absolute;top:8px;right:12px;font-size:12px;background:rgba(0,0,0,.5);padding:6px 8px;border-radius:8px;white-space:pre}
+  .err{position:absolute;bottom:12px;left:12px;right:12px;background:rgba(255,0,0,.15);border:1px solid rgba(255,0,0,.5);padding:8px;border-radius:8px;font-size:12px;display:none;white-space:pre-wrap}
+  label{user-select:none}
+</style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1 style="font-size:16px;margin:0;">Sunglasses AR — Fixed Bundle</h1>
+      <div id="status" class="badge">loading…</div>
+    </header>
+    <div id="stage">
+      <video id="video" playsinline autoplay muted></video>
+      <canvas id="canvas"></canvas>
+      <div class="hud" id="hud">—</div>
+      <div class="err" id="err"></div>
+    </div>
+    <footer>
+      <div class="controls">
+        <button id="startBtn">Start Camera</button>
+        <button id="flipBtn" class="hidden">Flip Camera</button>
+        <label class="badge"><input id="dbg" type="checkbox"> Debug landmarks (ALL)</label>
+        <label class="badge"><input id="frontMirror" type="checkbox" checked> Mirror front</label>
+        <label class="badge"><input id="rearMirror" type="checkbox"> Mirror rear</label>
+        <span class="badge">If you still see no dots, the bundle or model is blocked by your network.</span>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+  // Dynamically load the correct MediaPipe bundle with fallback.
+  (function loadVisionBundle(){
+    const PRIMARY = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.10/vision_bundle.js";
+    const FALLBACK = "https://unpkg.com/@mediapipe/tasks-vision@0.10.10/vision_bundle.js";
+    function inject(src){ return new Promise((res, rej)=>{ const s=document.createElement('script'); s.src=src; s.crossOrigin="anonymous"; s.onload=()=>res(src); s.onerror=()=>rej(new Error("Failed to load "+src)); document.head.appendChild(s); }); }
+    inject(PRIMARY).catch(()=>inject(FALLBACK)).catch((e)=>{ console.error(e); window.__VISION_LOAD_ERROR__ = e; });
+  })();
+  </script>
+
+  <script>
+  (function main(){
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('startBtn');
+    const flipBtn = document.getElementById('flipBtn');
+    const statusEl = document.getElementById('status');
+    const hud = document.getElementById('hud');
+    const errBox = document.getElementById('err');
+    const dbg = document.getElementById('dbg');
+    const frontMirror = document.getElementById('frontMirror');
+    const rearMirror = document.getElementById('rearMirror');
+
+    let stream=null, usingFront=true, running=false, faceLandmarker=null, lastT=performance.now();
+    let sunglassesReady=false;
+
+    function setErr(msg){ console.error(msg); errBox.textContent=msg; errBox.style.display='block'; }
+    function clearErr(){ errBox.style.display='none'; errBox.textContent=''; }
+    function setStatus(t){ statusEl.textContent=t; }
+    function fit(){ canvas.width = video.videoWidth || canvas.clientWidth; canvas.height = video.videoHeight || canvas.clientHeight; }
+    function ns(){ return window.vision || window; }
+    function applyMirror(){
+      const s = (usingFront ? (frontMirror.checked?-1:1) : (rearMirror.checked?-1:1));
+      video.style.transform = 'scaleX(' + s + ')';
+    }
+
+    // Sunglasses (inline SVG → image)
+    const sunglassesImg = new Image();
+    sunglassesImg.onload = ()=>{ sunglassesReady = true; };
+    sunglassesImg.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(`
+      <svg xmlns='http://www.w3.org/2000/svg' width='800' height='300' viewBox='0 0 800 300'>
+        <defs>
+          <linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#111'/><stop offset='1' stop-color='#333'/></linearGradient>
+          <filter id='shadow' x='-50%' y='-50%' width='200%' height='200%'><feDropShadow dx='0' dy='6' stdDeviation='8' flood-color='rgba(0,0,0,0.6)'/></filter>
+        </defs>
+        <g filter='url(#shadow)'>
+          <rect x='380' y='110' width='40' height='20' rx='10' fill='url(#g)'/>
+          <rect x='140' y='90' width='220' height='140' rx='24' fill='url(#g)' stroke='#000' stroke-width='6'/>
+          <rect x='168' y='120' width='164' height='84' rx='16' fill='rgba(0,0,0,0.55)'/>
+          <rect x='440' y='90' width='220' height='140' rx='24' fill='url(#g)' stroke='#000' stroke-width='6'/>
+          <rect x='468' y='120' width='164' height='84' rx='16' fill='rgba(0,0,0,0.55)'/>
+          <rect x='40' y='130' width='120' height='22' rx='11' fill='url(#g)'/>
+          <rect x='640' y='130' width='120' height='22' rx='11' fill='url(#g)'/>
+        </g>
+      </svg>
+    `);
+
+    async function waitForVision(maxMs=8000){
+      const start = performance.now();
+      while (performance.now()-start < maxMs){
+        if ((ns().FilesetResolver && ns().FaceLandmarker) || window.__VISION_LOAD_ERROR__) break;
+        await new Promise(r=>setTimeout(r,100));
+      }
+      if (window.__VISION_LOAD_ERROR__) throw window.__VISION_LOAD_ERROR__;
+      if (!(ns().FilesetResolver && ns().FaceLandmarker)) throw new Error('Vision bundle not available after load');
+    }
+
+    async function loadModel(){
+      if (faceLandmarker) return;
+      try{
+        await waitForVision();
+        const {FilesetResolver, FaceLandmarker} = ns();
+        const files = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.10/wasm');
+        faceLandmarker = await FaceLandmarker.createFromOptions(files, {
+          baseOptions:{ modelAssetPath:'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.10/models/face_landmarker.task' },
+          numFaces:1, runningMode:'VIDEO'
+        });
+        setStatus('model ready');
+      }catch(e){
+        setErr('Model load error: ' + (e && e.message ? e.message : e));
+        setStatus('model load error');
+      }
+    }
+
+    async function startCamera(front=true){
+      stopCamera(); usingFront = front; applyMirror();
+      try{
+        stream = await navigator.mediaDevices.getUserMedia({audio:false, video:{facingMode:front?'user':'environment', width:{ideal:1280}, height:{ideal:720}}});
+        video.srcObject = stream; await video.play().catch(()=>{});
+        fit(); startBtn.classList.add('hidden'); flipBtn.classList.remove('hidden');
+        setStatus(front ? 'front camera' : 'rear camera'); clearErr();
+        return true;
+      }catch(e){
+        setErr('Camera error: ' + (e && e.message ? e.message : e));
+        setStatus('tap Start and allow camera'); startBtn.classList.remove('hidden');
+        return false;
+      }
+    }
+    function stopCamera(){ if (stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } }
+
+    function drawAllLandmarks(pts, flipX){
+      const W=canvas.width, H=canvas.height;
+      ctx.fillStyle='rgba(0,255,0,0.9)';
+      for (let i=0;i<pts.length;i++){
+        const p=pts[i], x=flipX(p.x)*W, y=p.y*H;
+        ctx.beginPath(); ctx.arc(x,y,2,0,6.283); ctx.fill();
+      }
+    }
+
+    function drawGlasses(landmarks){
+      const pts = landmarks[0];
+      const L=33, R=263;
+      const W=canvas.width, H=canvas.height;
+      const shouldMirror = (usingFront && frontMirror.checked) || (!usingFront && rearMirror.checked);
+      const flipX = (x)=> shouldMirror ? (1-x) : x;
+
+      const lx = flipX(pts[L].x)*W, ly = pts[L].y*H;
+      const rx = flipX(pts[R].x)*W, ry = pts[R].y*H;
+      const cx = (lx+rx)/2, cy = (ly+ry)/2;
+      const dx = rx-lx, dy=ry-ly;
+      const angle = Math.atan2(dy,dx);
+      const eyeDist = Math.hypot(dx,dy);
+      const width = eyeDist * 2.5, height = width * (300/800);
+
+      ctx.save(); ctx.translate(cx,cy); ctx.rotate(angle);
+      if (sunglassesReady){
+        ctx.drawImage(sunglassesImg, -width/2, -height*0.45, width, height);
+      } else {
+        ctx.strokeStyle='cyan'; ctx.lineWidth=4;
+        ctx.strokeRect(-width/2,-height*0.45,width,height);
+      }
+      ctx.restore();
+
+      if (dbg.checked){ drawAllLandmarks(pts, flipX); }
+    }
+
+    async function loop(){
+      if (!running) return;
+      if (video.readyState >= 2 && faceLandmarker){
+        if (video.videoWidth !== canvas.width || video.videoHeight !== canvas.height) fit();
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        try{
+          const now = performance.now();
+          const res = faceLandmarker.detectForVideo(video, now);
+          if (res && res.faceLandmarks && res.faceLandmarks.length){
+            drawGlasses(res.faceLandmarks);
+            setStatus('face tracked ('+res.faceLandmarks.length+')');
+          } else {
+            setStatus('searching for face…');
+          }
+          const fps = Math.max(1, Math.round(1000/Math.max(1, now-lastT))); lastT=now;
+          hud.textContent = 'FPS ' + fps + (usingFront ? ' • front' : ' • rear');
+        }catch(e){
+          setErr('detectForVideo error: ' + (e && e.message ? e.message : e));
+        }
+      }
+      requestAnimationFrame(loop);
+    }
+
+    startBtn.addEventListener('click', async ()=>{ const ok=await startCamera(true); if(ok){ await loadModel(); running=true; loop(); } });
+    flipBtn.addEventListener('click', async ()=>{ await startCamera(!usingFront); });
+    document.addEventListener('visibilitychange', ()=>{ if(document.hidden) stopCamera(); else startCamera(usingFront); });
+    window.addEventListener('resize', fit);
+
+    // Autostart
+    window.addEventListener('load', async ()=>{
+      const ok = await startCamera(true);
+      await loadModel();
+      running = true; loop();
+      if (!ok) setStatus('tap Start and allow camera');
+    });
+  })();
+  </script>
+</body>
+</html>
