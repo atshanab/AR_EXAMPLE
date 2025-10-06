@@ -1,32 +1,100 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>AR_EXAMPLE - Floating Glasses</title>
-    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/ar.js@3.4.2/aframe/build/aframe-ar.js"></script>
-    <style>
-      body, html { margin: 0; padding: 0; overflow: hidden; }
-    </style>
-  </head>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>AR_EXAMPLE — Floating Glasses</title>
 
-  <body>
-    <a-scene embedded arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;">
-      <a-marker preset="hiro">
-        <!-- Left lens -->
-        <a-box color="black" position="-0.25 0.2 0" depth="0.02" height="0.1" width="0.2"></a-box>
-        <!-- Right lens -->
-        <a-box color="black" position="0.25 0.2 0" depth="0.02" height="0.1" width="0.2"></a-box>
+  <!-- A-Frame + AR.js (marker-based) -->
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/3.4.2/aframe/build/aframe-ar.js"></script>
+
+  <style>
+    html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#000; }
+    #ui {
+      position: fixed; inset: 0; display:flex; align-items:center; justify-content:center;
+      color:#fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      text-align:center; background: #000; z-index: 9;
+    }
+    #ui.hide { display:none; }
+    #ui .card {max-width: 22rem; line-height:1.35;}
+    #ui button {
+      margin-top: 12px; font-size: 16px; padding: 10px 14px; border-radius: 10px;
+      border: 0; background:#1f6feb; color:#fff;
+    }
+    .watermark {
+      position: fixed; right: 8px; bottom: 8px; padding: 6px 10px; color:#fff9;
+      font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      z-index: 8; background: #0006; border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Minimal UI: auto-start attempts immediately; button is fallback if browser blocks -->
+  <div id="ui">
+    <div class="card">
+      <h2>Allow Camera</h2>
+      <p>When prompted, tap <b>Allow</b>. Point your camera at the <b>Hiro</b> marker to see the glasses.</p>
+      <button id="startBtn" aria-label="Start Camera">Start Camera</button>
+      <p style="font-size:12px;opacity:.7;margin-top:8px">If the camera didn't open automatically, tap the button.</p>
+    </div>
+  </div>
+  <div class="watermark">AR_EXAMPLE</div>
+
+  <a-scene
+    id="scene"
+    embedded
+    vr-mode-ui="enabled: false"
+    renderer="alpha: true; antialias: true;"
+    arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false; facingMode: environment;">
+    
+    <!-- Marker anchor -->
+    <a-marker preset="hiro" id="hiroMarker">
+      <!-- Group for the glasses -->
+      <a-entity id="glasses" position="0 0.18 0">
+        <!-- Lenses -->
+        <a-box color="#111111" position="-0.25 0.02 0" depth="0.02" height="0.10" width="0.22" radius="0.005"></a-box>
+        <a-box color="#111111" position="0.25 0.02 0" depth="0.02" height="0.10" width="0.22" radius="0.005"></a-box>
+
         <!-- Bridge -->
-        <a-box color="black" position="0 0.2 0" depth="0.02" height="0.05" width="0.1"></a-box>
+        <a-box color="#111111" position="0 0.02 0" depth="0.02" height="0.04" width="0.10"></a-box>
+
         <!-- Arms -->
-        <a-box color="black" position="-0.4 0.2 -0.05" depth="0.15" height="0.02" width="0.02" rotation="0 30 0"></a-box>
-        <a-box color="black" position="0.4 0.2 -0.05" depth="0.15" height="0.02" width="0.02" rotation="0 -30 0"></a-box>
-        <!-- Float animation -->
-        <a-animation attribute="position" dur="2000" direction="alternate" repeat="indefinite"
-          from="0 0.18 0" to="0 0.22 0"></a-animation>
-      </a-marker>
-      <a-entity camera></a-entity>
-    </a-scene>
-  </body>
+        <a-box color="#111111" position="-0.40 0.02 -0.05" depth="0.16" height="0.02" width="0.02" rotation="0 30 0"></a-box>
+        <a-box color="#111111" position="0.40 0.02 -0.05" depth="0.16" height="0.02" width="0.02" rotation="0 -30 0"></a-box>
+
+        <!-- Gentle float animation -->
+        <a-animation attribute="position" from="0 0.16 0" to="0 0.22 0" dur="2000" direction="alternate" repeat="indefinite"></a-animation>
+      </a-entity>
+    </a-marker>
+
+    <a-entity camera></a-entity>
+  </a-scene>
+
+  <script>
+    // Auto-start: try playing scene immediately (some browsers require a gesture—fallback button provided)
+    const scene = document.getElementById('scene');
+    const ui = document.getElementById('ui');
+    const btn = document.getElementById('startBtn');
+
+    function startAR() {
+      // A-Frame scenes start automatically; toggling visibility prompts AR.js to init and request camera.
+      ui.classList.add('hide');
+      // Nothing else needed; ar.js will request getUserMedia.
+    }
+
+    // Fallback button (in case auto-start is blocked by browser policy)
+    btn.addEventListener('click', startAR);
+
+    // Attempt auto-start on load
+    window.addEventListener('load', () => {
+      // delay a tick to allow ar.js to attach
+      setTimeout(startAR, 50);
+    });
+
+    // Hide UI when we actually see the marker
+    const marker = document.getElementById('hiroMarker');
+    marker.addEventListener('markerFound', () => ui.classList.add('hide'));
+  </script>
+</body>
 </html>
