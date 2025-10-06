@@ -3,119 +3,111 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-  <title>AR_EXAMPLE — Floating Glasses (Fix)</title>
+  <title>AR_EXAMPLE — Minimal AR.js (Fallbacks)</title>
 
-  <!-- A-Frame + AR.js -->
+  <!-- A-Frame + AR.js stable -->
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/aframe/build/aframe-ar.js"></script>
 
   <style>
-    html, body { margin:0; padding:0; background:#000; }
-    /* iOS 100vh fix */
-    html, body { height:100%; }
+    html, body { margin:0; padding:0; background:#000; height:100%; }
     @supports (-webkit-touch-callout: none) {
       html, body { height: -webkit-fill-available; }
     }
-
-    /* Force the video/canvas to cover full screen */
-    a-scene, canvas, video {
-      position: fixed;
+    /* Force AR.js video full screen */
+    video#arjs-video, video[playsinline] {
+      position: fixed !important;
       top: 0; left: 0;
-      width: 100vw;
-      height: 100vh;
-      object-fit: cover;
-      touch-action: none;
+      width: 100vw !important;
+      height: 100vh !important;
+      object-fit: cover !important;
+      z-index: 0;
+      background: #000;
     }
-
-    /* Overlay UI */
-    #ui {
-      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-      color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      background: #000; z-index: 1000; text-align: center; padding: 16px;
+    a-scene, canvas {
+      position: fixed; top:0; left:0; width:100vw; height:100vh; z-index: 1;
     }
-    #ui.hide { display: none; }
-    #ui button {
-      margin-top: 10px; padding: 10px 14px; border-radius: 10px; border: 0;
-      background: #1f6feb; color: #fff; font-size: 16px;
-    }
-
-    /* Small marker preview to help users */
-    #markerHint {
-      position: fixed; right: 8px; bottom: 8px; width: 80px; height: 80px;
-      background: #fff; z-index: 900; border-radius: 6px; overflow: hidden;
-      border: 1px solid #0006;
-    }
-    #note { position: fixed; left: 8px; bottom: 8px; z-index: 900; color:#fff; font-size: 12px; opacity:.8; }
+    #ui { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:#000; color:#fff; z-index:2; }
+    #ui.hide { display:none; }
+    #ui button { margin:6px; padding:10px 14px; border:0; border-radius:10px; background:#1f6feb; color:#fff; }
+    #note { position:fixed; right:8px; bottom:8px; color:#fff9; font:12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; z-index:2;}
   </style>
 </head>
 <body>
   <div id="ui">
-    <div>
+    <div style="text-align:center">
       <h2>Allow Camera</h2>
-      <p>Tap <b>Allow</b>. Then point at the <b>Hiro</b> marker.</p>
-      <button id="startBtn">Start Camera</button>
-      <p style="opacity:.7;font-size:12px;margin-top:8px">If the screen goes black: reload and tap the button first.</p>
+      <p>If the screen stays black, try the <b>Front Camera</b> button.</p>
+      <div>
+        <button id="startBack">Start (Back)</button>
+        <button id="startFront">Start (Front)</button>
+      </div>
     </div>
   </div>
-  <img id="markerHint" alt="Hiro marker hint"
-       src="https://raw.githubusercontent.com/AR-js-org/AR.js/master/three.js/examples/marker-training/examples/pattern-files/hiro.png">
   <div id="note">AR_EXAMPLE</div>
 
-  <a-scene
-    id="scene"
-    embedded
-    vr-mode-ui="enabled: false"
-    device-orientation-permission-ui="enabled: false"
-    renderer="alpha: true; antialias: true; precision: mediump; colorManagement: true"
-    arjs="
-      trackingMethod: best;
-      sourceType: webcam;
-      facingMode: environment;
-      detectionMode: mono_and_matrix;
-      matrixCodeType: 3x3;
-      videoTexture: true;
-      debugUIEnabled: false;
-      displayWidth: 1280; displayHeight: 720;
-      sourceWidth: 1280; sourceHeight: 720;
-    ">
+  <a-scene id="scene"
+           embedded
+           vr-mode-ui="enabled: false"
+           device-orientation-permission-ui="enabled: false"
+           renderer="alpha: true; antialias: true;"
+           arjs="
+             trackingMethod: best;
+             sourceType: webcam;
+             debugUIEnabled: false;
+           ">
     <a-marker preset="hiro" id="hiroMarker">
-      <a-entity id="glasses" position="0 0.18 0" scale="1 1 1">
-        <!-- Lenses -->
+      <a-entity id="glasses" position="0 0.18 0">
         <a-box color="#111" position="-0.25 0.02 0" depth="0.02" height="0.10" width="0.22"></a-box>
         <a-box color="#111" position="0.25 0.02 0" depth="0.02" height="0.10" width="0.22"></a-box>
-        <!-- Bridge -->
         <a-box color="#111" position="0 0.02 0" depth="0.02" height="0.04" width="0.10"></a-box>
-        <!-- Arms -->
         <a-box color="#111" position="-0.40 0.02 -0.05" depth="0.16" height="0.02" width="0.02" rotation="0 30 0"></a-box>
         <a-box color="#111" position="0.40 0.02 -0.05" depth="0.16" height="0.02" width="0.02" rotation="0 -30 0"></a-box>
-        <!-- Gentle float -->
         <a-animation attribute="position" from="0 0.16 0" to="0 0.22 0" dur="2000" direction="alternate" repeat="indefinite"></a-animation>
       </a-entity>
     </a-marker>
-
     <a-entity camera></a-entity>
   </a-scene>
 
   <script>
-    // UI + start handling (gesture fallback)
     const ui = document.getElementById('ui');
-    const btn = document.getElementById('startBtn');
-    function startAR(){
+    const startBack = document.getElementById('startBack');
+    const startFront = document.getElementById('startFront');
+
+    function startAR(facing) {
+      // Adjust facingMode at runtime by patching AR.js source parameters
+      const sceneEl = document.querySelector('a-scene');
+      // Remove existing source stream if any (defensive)
+      if (THREEx && THREEx.ArToolkitSource && sceneEl.systems['arjs']) {
+        try { sceneEl.systems['arjs'].arToolkitSource.onResizeElement(); } catch(e){}
+      }
+      // Patch attribute (AR.js reads on init)
+      sceneEl.setAttribute('arjs', `trackingMethod: best; sourceType: webcam; facingMode: ${facing}; debugUIEnabled: false;`);
       ui.classList.add('hide');
-      // Workaround: toggle scene visibility to force AR.js video attach after gesture
-      const sc = document.getElementById('scene');
-      sc.style.display = 'none';
-      setTimeout(()=>{ sc.style.display = 'block'; }, 10);
+      // Force reinit by toggling scene
+      sceneEl.style.display = 'none';
+      setTimeout(()=>{ sceneEl.style.display = 'block'; }, 30);
     }
-    btn.addEventListener('click', startAR);
-    window.addEventListener('load', () => setTimeout(startAR, 80));
 
-    // If marker is detected, ensure UI hidden
+    startBack.addEventListener('click', () => startAR('environment'));
+    startFront.addEventListener('click', () => startAR('user'));
+
+    // Auto attempt back camera
+    window.addEventListener('load', () => setTimeout(() => startAR('environment'), 60));
+
+    // Style the injected AR.js video when it appears
+    const observer = new MutationObserver(() => {
+      const v = document.querySelector('video#arjs-video');
+      if (v) {
+        v.setAttribute('playsinline','');
+        v.setAttribute('webkit-playsinline','');
+        v.style.objectFit = 'cover';
+      }
+    });
+    observer.observe(document.body, {childList:true, subtree:true});
+
+    // Hide UI when marker found
     document.getElementById('hiroMarker').addEventListener('markerFound', () => ui.classList.add('hide'));
-
-    // Debug: log camera errors
-    const _gUM = navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
-    if(!_gUM){ console.warn('getUserMedia not available'); }
   </script>
 </body>
 </html>
