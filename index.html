@@ -2,112 +2,182 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-  <title>AR_EXAMPLE — Minimal AR.js (Fallbacks)</title>
-
-  <!-- A-Frame + AR.js stable -->
-  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/aframe/build/aframe-ar.js"></script>
-
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>AR_EXAMPLE — Face Filter (Sunglasses)</title>
   <style>
-    html, body { margin:0; padding:0; background:#000; height:100%; }
-    @supports (-webkit-touch-callout: none) {
-      html, body { height: -webkit-fill-available; }
+    html, body { margin:0; padding:0; background:#000; height:100%; overflow:hidden; }
+    #wrap { position:fixed; inset:0; display:grid; place-items:center; background:#000; }
+    #stage { position:relative; width:100vw; height:100vh; overflow:hidden; }
+    video, canvas {
+      position:absolute; top:0; left:0; width:100%; height:100%;
+      object-fit:cover;
+      transform: scaleX(-1); /* selfie mirror */
     }
-    /* Force AR.js video full screen */
-    video#arjs-video, video[playsinline] {
-      position: fixed !important;
-      top: 0; left: 0;
-      width: 100vw !important;
-      height: 100vh !important;
-      object-fit: cover !important;
-      z-index: 0;
-      background: #000;
-    }
-    a-scene, canvas {
-      position: fixed; top:0; left:0; width:100vw; height:100vh; z-index: 1;
-    }
-    #ui { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:#000; color:#fff; z-index:2; }
+    #ui { position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+          background:#000; color:#fff; z-index:10; text-align:center; }
     #ui.hide { display:none; }
-    #ui button { margin:6px; padding:10px 14px; border:0; border-radius:10px; background:#1f6feb; color:#fff; }
-    #note { position:fixed; right:8px; bottom:8px; color:#fff9; font:12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; z-index:2;}
+    button {
+      margin-top: 12px; padding: 12px 16px; border-radius: 12px; border: 0;
+      background:#1f6feb; color:#fff; font-size:16px;
+    }
+    .wm { position:fixed; right:8px; bottom:8px; color:#fff9; font:12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   </style>
+  <!-- MediaPipe FaceMesh CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3/drawing_utils.js"></script>
 </head>
 <body>
   <div id="ui">
-    <div style="text-align:center">
-      <h2>Allow Camera</h2>
-      <p>If the screen stays black, try the <b>Front Camera</b> button.</p>
-      <div>
-        <button id="startBack">Start (Back)</button>
-        <button id="startFront">Start (Front)</button>
-      </div>
+    <div>
+      <h2>Face Filter — Sunglasses</h2>
+      <p>Tap <b>Start</b>, then allow camera. Works with the <b>front camera</b>.</p>
+      <button id="startBtn">Start</button>
     </div>
   </div>
-  <div id="note">AR_EXAMPLE</div>
-
-  <a-scene id="scene"
-           embedded
-           vr-mode-ui="enabled: false"
-           device-orientation-permission-ui="enabled: false"
-           renderer="alpha: true; antialias: true;"
-           arjs="
-             trackingMethod: best;
-             sourceType: webcam;
-             debugUIEnabled: false;
-           ">
-    <a-marker preset="hiro" id="hiroMarker">
-      <a-entity id="glasses" position="0 0.18 0">
-        <a-box color="#111" position="-0.25 0.02 0" depth="0.02" height="0.10" width="0.22"></a-box>
-        <a-box color="#111" position="0.25 0.02 0" depth="0.02" height="0.10" width="0.22"></a-box>
-        <a-box color="#111" position="0 0.02 0" depth="0.02" height="0.04" width="0.10"></a-box>
-        <a-box color="#111" position="-0.40 0.02 -0.05" depth="0.16" height="0.02" width="0.02" rotation="0 30 0"></a-box>
-        <a-box color="#111" position="0.40 0.02 -0.05" depth="0.16" height="0.02" width="0.02" rotation="0 -30 0"></a-box>
-        <a-animation attribute="position" from="0 0.16 0" to="0 0.22 0" dur="2000" direction="alternate" repeat="indefinite"></a-animation>
-      </a-entity>
-    </a-marker>
-    <a-entity camera></a-entity>
-  </a-scene>
+  <div class="wm">AR_EXAMPLE</div>
+  <div id="wrap">
+    <div id="stage">
+      <video id="video" playsinline muted></video>
+      <canvas id="overlay"></canvas>
+    </div>
+  </div>
 
   <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('overlay');
+    const ctx = canvas.getContext('2d');
     const ui = document.getElementById('ui');
-    const startBack = document.getElementById('startBack');
-    const startFront = document.getElementById('startFront');
+    const startBtn = document.getElementById('startBtn');
 
-    function startAR(facing) {
-      // Adjust facingMode at runtime by patching AR.js source parameters
-      const sceneEl = document.querySelector('a-scene');
-      // Remove existing source stream if any (defensive)
-      if (THREEx && THREEx.ArToolkitSource && sceneEl.systems['arjs']) {
-        try { sceneEl.systems['arjs'].arToolkitSource.onResizeElement(); } catch(e){}
-      }
-      // Patch attribute (AR.js reads on init)
-      sceneEl.setAttribute('arjs', `trackingMethod: best; sourceType: webcam; facingMode: ${facing}; debugUIEnabled: false;`);
-      ui.classList.add('hide');
-      // Force reinit by toggling scene
-      sceneEl.style.display = 'none';
-      setTimeout(()=>{ sceneEl.style.display = 'block'; }, 30);
+    function fitCanvas() {
+      const r = document.getElementById('stage').getBoundingClientRect();
+      canvas.width = r.width; canvas.height = r.height;
+    }
+    window.addEventListener('resize', fitCanvas);
+
+    function lerp(a,b,t){ return a + (b-a)*t; }
+    function drawRoundedRect(ctx, x, y, w, h, r){
+      const rr = Math.min(r, w/2, h/2);
+      ctx.beginPath();
+      ctx.moveTo(x+rr, y);
+      ctx.arcTo(x+w, y, x+w, y+h, rr);
+      ctx.arcTo(x+w, y+h, x, y+h, rr);
+      ctx.arcTo(x, y+h, x, y, rr);
+      ctx.arcTo(x, y, x+w, y, rr);
+      ctx.closePath();
+      ctx.fill();
     }
 
-    startBack.addEventListener('click', () => startAR('environment'));
-    startFront.addEventListener('click', () => startAR('user'));
+    async function startCamera() {
+      ui.classList.add('hide');
+      fitCanvas();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: {ideal: 1280}, height: {ideal: 720} },
+        audio: false
+      });
+      video.srcObject = stream;
+      await video.play();
 
-    // Auto attempt back camera
-    window.addEventListener('load', () => setTimeout(() => startAR('environment'), 60));
+      // MediaPipe FaceMesh setup
+      const faceMesh = new FaceMesh.FaceMesh({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`
+      });
+      faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
 
-    // Style the injected AR.js video when it appears
-    const observer = new MutationObserver(() => {
-      const v = document.querySelector('video#arjs-video');
-      if (v) {
-        v.setAttribute('playsinline','');
-        v.setAttribute('webkit-playsinline','');
-        v.style.objectFit = 'cover';
-      }
+      const camera = new Camera.Camera(video, {
+        onFrame: async () => { await faceMesh.send({image: video}); },
+        width: 1280,
+        height: 720
+      });
+      camera.start();
+
+      faceMesh.onResults((results) => {
+        // draw video
+        ctx.clearRect(0,0,canvas.width, canvas.height);
+        // landmarks are normalized to [0,1]
+        if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
+
+        const lm = results.multiFaceLandmarks[0];
+
+        // Helpers to map normalized coords to canvas (mirrored)
+        const W = canvas.width, H = canvas.height;
+        const toXY = p => ({ x: (1 - p.x) * W, y: p.y * H }); // mirrored horizontally
+
+        // Key landmarks for eyes (MediaPipe indexing)
+        const leftOuter = toXY(lm[263]);
+        const leftInner = toXY(lm[362]);
+        const rightOuter = toXY(lm[33]);
+        const rightInner = toXY(lm[133]);
+
+        // Eye centers and angle
+        const leftCenter = { x: (leftOuter.x + leftInner.x)/2, y: (leftOuter.y + leftInner.y)/2 };
+        const rightCenter = { x: (rightOuter.x + rightInner.x)/2, y: (rightOuter.y + rightInner.y)/2 };
+
+        const dx = leftCenter.x - rightCenter.x;
+        const dy = leftCenter.y - rightCenter.y;
+        const angle = Math.atan2(dy, dx);
+
+        // Eyeglass sizing based on eye distance
+        const eyeDist = Math.hypot(dx, dy);
+        const lensW = eyeDist * 0.55;   // lens width
+        const lensH = eyeDist * 0.32;   // lens height
+        const bridgeW = eyeDist * 0.18; // bridge width
+        const rim = Math.max(2, Math.round(lensH * 0.12)); // rim thickness in px
+
+        // Compute transform
+        ctx.save();
+        // translate to mid-point between eyes
+        const mid = { x: (leftCenter.x + rightCenter.x)/2, y: (leftCenter.y + rightCenter.y)/2 };
+        ctx.translate(mid.x, mid.y);
+        ctx.rotate(angle);
+
+        // Left lens rect position (relative)
+        const halfGap = bridgeW/2;
+        const lensGap = halfGap + lensW/2;
+
+        ctx.fillStyle = 'rgba(15,15,15,0.94)';
+        // Left lens
+        drawRoundedRect(ctx, -lensGap - lensW/2, -lensH/2, lensW, lensH, lensH*0.25);
+        // Right lens
+        drawRoundedRect(ctx, lensGap - lensW/2, -lensH/2, lensW, lensH, lensH*0.25);
+
+        // Bridge (thin)
+        ctx.fillStyle = 'rgba(20,20,20,0.95)';
+        drawRoundedRect(ctx, -halfGap, -lensH*0.18, bridgeW, lensH*0.36, lensH*0.18);
+
+        // Rims: subtle highlight
+        ctx.lineWidth = rim;
+        ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+        ctx.strokeRect(-lensGap - lensW/2, -lensH/2, lensW, lensH);
+        ctx.strokeRect(lensGap - lensW/2, -lensH/2, lensW, lensH);
+
+        // Arms (simple lines extending out)
+        ctx.strokeStyle = 'rgba(10,10,10,0.9)';
+        ctx.lineWidth = Math.max(2, rim * 0.6);
+        const armLen = lensW * 0.9;
+        ctx.beginPath();
+        ctx.moveTo(-lensGap - lensW/2, -lensH*0.15);
+        ctx.lineTo(-lensGap - lensW/2 - armLen, -lensH*0.15);
+        ctx.moveTo(lensGap + lensW/2, -lensH*0.15);
+        ctx.lineTo(lensGap + lensW/2 + armLen, -lensH*0.15);
+        ctx.stroke();
+
+        ctx.restore();
+      });
+    }
+
+    startBtn.addEventListener('click', () => {
+      startCamera().catch(err => {
+        ui.classList.remove('hide');
+        alert('Camera failed: ' + err.message);
+      });
     });
-    observer.observe(document.body, {childList:true, subtree:true});
-
-    // Hide UI when marker found
-    document.getElementById('hiroMarker').addEventListener('markerFound', () => ui.classList.add('hide'));
   </script>
 </body>
 </html>
