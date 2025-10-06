@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>AR_EXAMPLE — Floating Glasses</title>
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/3.4.2/aframe/build/aframe-ar.js"></script>
+  <style>
+    html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#000; }
+    #ui {position: fixed; inset:0; display:flex; align-items:center; justify-content:center;
+         color:#fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+         text-align:center; background:#000; z-index:9;}
+    #ui.hide { display:none; }
+    #ui button { margin-top:12px; font-size:16px; padding:10px 14px; border-radius:10px; border:0;
+                 background:#1f6feb; color:#fff; }
+    .wm { position:fixed; right:8px; bottom:8px; padding:6px 10px; color:#fff9; font-size:12px;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; z-index:8; background:#0006; border-radius:6px;}
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <div>
+      <h2>Allow Camera</h2>
+      <p>Tap <b>Allow</b> when asked. Point at the <b>Hiro</b> marker.</p>
+      <button id="startBtn">Start Camera</button>
+    </div>
+  </div>
+  <div class="wm">AR_EXAMPLE</div>
+
+  <a-scene id="scene" embedded vr-mode-ui="enabled: false"
+           renderer="alpha: true; antialias: true;"
+           arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false; facingMode: environment;">
+    <a-marker preset="hiro" id="hiroMarker">
+      <a-entity id="glasses" position="0 0.18 0">
+        <a-box color="#111" position="-0.25 0.02 0" depth="0.02" height="0.10" width="0.22"></a-box>
+        <a-box color="#111" position="0.25 0.02 0" depth="0.02" height="0.10" width="0.22"></a-box>
+        <a-box color="#111" position="0 0.02 0" depth="0.02" height="0.04" width="0.10"></a-box>
+        <a-box color="#111" position="-0.40 0.02 -0.05" depth="0.16" height="0.02" width="0.02" rotation="0 30 0"></a-box>
+        <a-box color="#111" position="0.40 0.02 -0.05" depth="0.16" height="0.02" width="0.02" rotation="0 -30 0"></a-box>
+        <a-animation attribute="position" from="0 0.16 0" to="0 0.22 0" dur="2000" direction="alternate" repeat="indefinite"></a-animation>
+      </a-entity>
+    </a-marker>
+    <a-entity camera></a-entity>
+  </a-scene>
+
+  <script>
+    const ui = document.getElementById('ui');
+    const btn = document.getElementById('startBtn');
+    function startAR(){ ui.classList.add('hide'); }
+    btn.addEventListener('click', startAR);
+    window.addEventListener('load', () => setTimeout(startAR, 50));
+    document.getElementById('hiroMarker').addEventListener('markerFound', () => ui.classList.add('hide'));
+  </script>
+</body>
+</html>
