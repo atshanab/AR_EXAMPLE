@@ -2,55 +2,120 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>AR_EXAMPLE — Floating Glasses</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <title>AR_EXAMPLE — Floating Glasses (Fix)</title>
+
+  <!-- A-Frame + AR.js -->
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-  <script src="https://raw.githack.com/AR-js-org/AR.js/3.4.2/aframe/build/aframe-ar.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/aframe/build/aframe-ar.js"></script>
+
   <style>
-    html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#000; }
-    #ui {position: fixed; inset:0; display:flex; align-items:center; justify-content:center;
-         color:#fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-         text-align:center; background:#000; z-index:9;}
-    #ui.hide { display:none; }
-    #ui button { margin-top:12px; font-size:16px; padding:10px 14px; border-radius:10px; border:0;
-                 background:#1f6feb; color:#fff; }
-    .wm { position:fixed; right:8px; bottom:8px; padding:6px 10px; color:#fff9; font-size:12px;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; z-index:8; background:#0006; border-radius:6px;}
+    html, body { margin:0; padding:0; background:#000; }
+    /* iOS 100vh fix */
+    html, body { height:100%; }
+    @supports (-webkit-touch-callout: none) {
+      html, body { height: -webkit-fill-available; }
+    }
+
+    /* Force the video/canvas to cover full screen */
+    a-scene, canvas, video {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+      touch-action: none;
+    }
+
+    /* Overlay UI */
+    #ui {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: #000; z-index: 1000; text-align: center; padding: 16px;
+    }
+    #ui.hide { display: none; }
+    #ui button {
+      margin-top: 10px; padding: 10px 14px; border-radius: 10px; border: 0;
+      background: #1f6feb; color: #fff; font-size: 16px;
+    }
+
+    /* Small marker preview to help users */
+    #markerHint {
+      position: fixed; right: 8px; bottom: 8px; width: 80px; height: 80px;
+      background: #fff; z-index: 900; border-radius: 6px; overflow: hidden;
+      border: 1px solid #0006;
+    }
+    #note { position: fixed; left: 8px; bottom: 8px; z-index: 900; color:#fff; font-size: 12px; opacity:.8; }
   </style>
 </head>
 <body>
   <div id="ui">
     <div>
       <h2>Allow Camera</h2>
-      <p>Tap <b>Allow</b> when asked. Point at the <b>Hiro</b> marker.</p>
+      <p>Tap <b>Allow</b>. Then point at the <b>Hiro</b> marker.</p>
       <button id="startBtn">Start Camera</button>
+      <p style="opacity:.7;font-size:12px;margin-top:8px">If the screen goes black: reload and tap the button first.</p>
     </div>
   </div>
-  <div class="wm">AR_EXAMPLE</div>
+  <img id="markerHint" alt="Hiro marker hint"
+       src="https://raw.githubusercontent.com/AR-js-org/AR.js/master/three.js/examples/marker-training/examples/pattern-files/hiro.png">
+  <div id="note">AR_EXAMPLE</div>
 
-  <a-scene id="scene" embedded vr-mode-ui="enabled: false"
-           renderer="alpha: true; antialias: true;"
-           arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false; facingMode: environment;">
+  <a-scene
+    id="scene"
+    embedded
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false"
+    renderer="alpha: true; antialias: true; precision: mediump; colorManagement: true"
+    arjs="
+      trackingMethod: best;
+      sourceType: webcam;
+      facingMode: environment;
+      detectionMode: mono_and_matrix;
+      matrixCodeType: 3x3;
+      videoTexture: true;
+      debugUIEnabled: false;
+      displayWidth: 1280; displayHeight: 720;
+      sourceWidth: 1280; sourceHeight: 720;
+    ">
     <a-marker preset="hiro" id="hiroMarker">
-      <a-entity id="glasses" position="0 0.18 0">
+      <a-entity id="glasses" position="0 0.18 0" scale="1 1 1">
+        <!-- Lenses -->
         <a-box color="#111" position="-0.25 0.02 0" depth="0.02" height="0.10" width="0.22"></a-box>
         <a-box color="#111" position="0.25 0.02 0" depth="0.02" height="0.10" width="0.22"></a-box>
+        <!-- Bridge -->
         <a-box color="#111" position="0 0.02 0" depth="0.02" height="0.04" width="0.10"></a-box>
+        <!-- Arms -->
         <a-box color="#111" position="-0.40 0.02 -0.05" depth="0.16" height="0.02" width="0.02" rotation="0 30 0"></a-box>
         <a-box color="#111" position="0.40 0.02 -0.05" depth="0.16" height="0.02" width="0.02" rotation="0 -30 0"></a-box>
+        <!-- Gentle float -->
         <a-animation attribute="position" from="0 0.16 0" to="0 0.22 0" dur="2000" direction="alternate" repeat="indefinite"></a-animation>
       </a-entity>
     </a-marker>
+
     <a-entity camera></a-entity>
   </a-scene>
 
   <script>
+    // UI + start handling (gesture fallback)
     const ui = document.getElementById('ui');
     const btn = document.getElementById('startBtn');
-    function startAR(){ ui.classList.add('hide'); }
+    function startAR(){
+      ui.classList.add('hide');
+      // Workaround: toggle scene visibility to force AR.js video attach after gesture
+      const sc = document.getElementById('scene');
+      sc.style.display = 'none';
+      setTimeout(()=>{ sc.style.display = 'block'; }, 10);
+    }
     btn.addEventListener('click', startAR);
-    window.addEventListener('load', () => setTimeout(startAR, 50));
+    window.addEventListener('load', () => setTimeout(startAR, 80));
+
+    // If marker is detected, ensure UI hidden
     document.getElementById('hiroMarker').addEventListener('markerFound', () => ui.classList.add('hide'));
+
+    // Debug: log camera errors
+    const _gUM = navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+    if(!_gUM){ console.warn('getUserMedia not available'); }
   </script>
 </body>
 </html>
